@@ -17,6 +17,14 @@ class SewaLapanganGUI:
         
         self.db = Database()
         self.sistem = SistemSewaLapangan(self.db)
+        
+        self.status_bar = ttk.Label(
+            self.root,
+            text="Sistem Sewa Lapangan Olahraga - Siap",
+            relief='sunken',
+            anchor='w'
+        )
+        
         self.setup_gui()
     
     def setup_gui(self):
@@ -32,13 +40,7 @@ class SewaLapanganGUI:
         self.create_tab_member()
         self.create_tab_laporan()
         
-        # Status bar
-        self.status_bar = ttk.Label(
-            self.root,
-            text="Sistem Sewa Lapangan Olahraga - Siap",
-            relief='sunken',
-            anchor='w'
-        )
+        # Status bar sudah dibuat di __init__, sekarang pack
         self.status_bar.pack(fill='x', padx=10, pady=5)
     
     def create_tab_pendaftaran(self):
@@ -843,13 +845,24 @@ class SewaLapanganGUI:
         )
         
         if konfirmasi:
-            # Simpan ke database
-            success = self.db.tambah_penyewaan(
+            # Simpan ke database dan ambil ID penyewaan yang baru dibuat
+            id_penyewaan = self.simpan_penyewaan_dan_ambil_id(
                 id_member, id_lapangan, tanggal, jam_mulai, jam_selesai, durasi, total_biaya
             )
             
-            if success:
-                messagebox.showinfo("Berhasil", "Pemesanan berhasil disimpan!")
+            if id_penyewaan:
+                messagebox.showinfo(
+                    "Berhasil",
+                    f"✅ PEMESANAN BERHASIL!\n\n"
+                    f"ID Penyewaan: {id_penyewaan}\n"
+                    f"ID Member: {id_member}\n"
+                    f"Lapangan: {lapangan_data['nama_lapangan']}\n"
+                    f"Tanggal: {tanggal}\n"
+                    f"Jam: {jam_mulai} - {jam_selesai}\n"
+                    f"Durasi: {durasi} jam\n"
+                    f"Total Biaya: Rp {total_biaya:,}\n\n"
+                    f"Silakan catat ID Penyewaan untuk pembayaran!"
+                )
                 
                 # Reset form
                 self.reset_form_pemesanan()
@@ -857,14 +870,45 @@ class SewaLapanganGUI:
                 # Refresh jadwal
                 self.load_jadwal_hari_ini()
                 
-                # Update status lapangan (jika perlu)
-                if self.db.cek_ketersediaan_lapangan(id_lapangan, tanggal, jam_mulai, jam_selesai) == False:
-                    messagebox.showinfo("Info", "Lapangan telah berhasil dipesan!")
-                
-                self.status_bar.config(text=f"Pemesanan untuk member {id_member} berhasil")
+                self.status_bar.config(text=f"Pemesanan berhasil! ID: {id_penyewaan}")
             else:
                 messagebox.showerror("Error", "Gagal menyimpan pemesanan!")
     
+    def simpan_penyewaan_dan_ambil_id(self, id_member, id_lapangan, tanggal, jam_mulai, 
+                                     jam_selesai, durasi, total_biaya):
+        """Simpan penyewaan dan ambil ID yang baru dibuat"""
+        try:
+            # Gunakan cursor secara manual untuk mendapatkan lastrowid
+            if not self.db.connection or not self.db.connection.is_connected():
+                self.db.connect()
+            
+            cursor = self.db.connection.cursor(dictionary=True)
+            
+            query = """
+            INSERT INTO penyewaan 
+            (id_member, id_lapangan, tanggal_sewa, jam_mulai, jam_selesai, durasi_jam, total_biaya)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """
+            
+            params = (id_member, id_lapangan, tanggal, jam_mulai, jam_selesai, durasi, total_biaya)
+            
+            cursor.execute(query, params)
+            self.db.connection.commit()
+            
+            # Ambil ID yang baru saja dibuat
+            id_penyewaan = cursor.lastrowid
+            
+            cursor.close()
+            
+            print(f"[DEBUG] ID Penyewaan baru: {id_penyewaan}")
+            return id_penyewaan
+            
+        except Exception as e:
+            print(f"[ERROR] Gagal menyimpan penyewaan: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
     def reset_form_pemesanan(self):
         """Reset form pemesanan"""
         self.pemesanan_id_member.delete(0, tk.END)
